@@ -1,0 +1,6 @@
+{
+  "name": "LUNA ROYALE",
+  "description": "LUNA ROYALE — Elegance, Curated. Curated luxury jewelry, watches, eyewear, signature fragrance, Royale Home, and gift sets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

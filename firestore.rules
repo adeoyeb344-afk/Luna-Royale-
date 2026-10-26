@@ -1,0 +1,94 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Dynamic Admin Authorization: strictly reads /users/{uid}.admin == true
+    // from the SAME (default) database.
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('admin', false) == true;
+    }
+
+    // User Profiles (/users/{userId})
+    // - Authenticated users can read their own profile; admins can read any profile.
+    // - Document creation is allowed for the authenticated owner.
+    // - Document update is allowed for the authenticated owner, strictly preserving admin: true.
+    // - Only an admin can delete a user document.
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) && (
+        resource.data.get('admin', false) == true
+          ? request.resource.data.get('admin', false) == true
+          : true
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Official Catalog Products (/products/{productId})
+    // Publicly readable; create, update, and delete are strictly restricted to an authenticated
+    // administrator whose /users/{uid} document in the (default) database has admin == true.
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Official Collections (/collections/{collectionId})
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Official Gift Boxes & Sets (/boxes/{boxId})
+    match /boxes/{boxId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Customer Shopping Carts (/carts/{userId})
+    match /carts/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Customer Wishlists (/wishlists/{userId})
+    match /wishlists/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Customer Orders (/orders/{orderId})
+    match /orders/{orderId} {
+      allow create: if isSignedIn() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow get: if isSignedIn() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.get('userId', '') == request.auth.uid);
+      allow update: if isAdmin() || (isSignedIn() && resource.data.get('userId', '') == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Payment Transactions (/transactions/{transactionId})
+    match /transactions/{transactionId} {
+      allow create: if isSignedIn() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow get: if isSignedIn() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.get('userId', '') == request.auth.uid);
+      allow update: if isAdmin() || (isSignedIn() && resource.data.get('userId', '') == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Verified Customer Reviews (/reviews/{reviewId})
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.get('userId', '') == request.auth.uid || isAdmin());
+    }
+  }
+}

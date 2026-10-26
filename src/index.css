@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Cinzel', Georgia, serif;
+  --font-sans: 'Whyte', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  --color-burgundy: #701F36;
+  --color-black: #0B0B0B;
+  --color-ivory: #F8F6EF;
+  --color-gold: #D6B47A;
+}
+
+@layer base {
+  :root {
+    --color-burgundy: #701F36;
+    --color-black: #0B0B0B;
+    --color-ivory: #F8F6EF;
+    --color-gold: #D6B47A;
+    --font-display: 'Cinzel', Georgia, serif;
+    --font-sans: 'Whyte', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  html {
+    background-color: #F8F6EF;
+    color: #0B0B0B;
+    font-family: 'Whyte', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Whyte', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Cinzel', Georgia, serif;
+    text-wrap: balance;
+  }
+}
+
+.font-display {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-sans {
+  font-family: 'Whyte', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle luxury focus states */
+*:focus-visible {
+  outline: 1.5px solid #701F36;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

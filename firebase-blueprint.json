@@ -1,0 +1,194 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated LUNA ROYALE customer or administrator profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "fullName": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "admin": { "type": "boolean" },
+        "deliveryInfo": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Official LUNA ROYALE luxury catalog item.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": {
+          "type": "string",
+          "enum": ["Jewelry", "Watches", "Glasses", "Perfume", "Home Fragrance"]
+        },
+        "description": { "type": "string", "maxLength": 4000 },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "enum": ["NGN"] },
+        "availability": {
+          "type": "string",
+          "enum": ["in_stock", "out_of_stock", "limited"]
+        },
+        "images": { "type": "array" },
+        "published": { "type": "boolean" },
+        "collectionIds": { "type": "array" },
+        "boxIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "category", "price", "currency", "availability", "published"]
+    },
+    "Collection": {
+      "title": "Collection",
+      "description": "Curated LUNA ROYALE thematic collection.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 160 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "productIds": { "type": "array" },
+        "published": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "description"]
+    },
+    "BoxSet": {
+      "title": "BoxSet",
+      "description": "Curated LUNA ROYALE merchandising gift box or set.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 160 },
+        "composition": { "type": "string", "maxLength": 500 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "productIds": { "type": "array" },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "enum": ["NGN"] },
+        "published": { "type": "boolean" },
+        "images": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "composition"]
+    },
+    "Cart": {
+      "title": "Cart",
+      "description": "Persistent shopping cart for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "items": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "items"]
+    },
+    "Wishlist": {
+      "title": "Wishlist",
+      "description": "Persistent wishlist for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "productIds": { "type": "array" },
+        "items": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase order record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "customerEmail": { "type": "string", "maxLength": 256 },
+        "customerName": { "type": "string", "maxLength": 160 },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "currency": { "type": "string", "enum": ["NGN"] },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
+        },
+        "deliveryInfo": { "type": "object" },
+        "paymentReference": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "items", "subtotal", "currency", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Verified payment transaction record.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "reference": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["NGN"] },
+        "status": { "type": "string", "maxLength": 64 },
+        "gateway": { "type": "string", "enum": ["paystack"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["orderId", "userId", "reference", "amount", "currency", "status"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Verified customer purchase review.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 120 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "maxLength": 2000 },
+        "verifiedPurchase": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["productId", "userId", "rating", "comment", "verifiedPurchase"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile and dynamic admin authorization (/users/{uid}.admin == true)."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Official LUNA ROYALE catalog products."
+    },
+    "/collections/{collectionId}": {
+      "schema": { "$ref": "#/entities/Collection" },
+      "description": "Curated LUNA ROYALE collections."
+    },
+    "/boxes/{boxId}": {
+      "schema": { "$ref": "#/entities/BoxSet" },
+      "description": "Curated LUNA ROYALE merchandising gift boxes and sets."
+    },
+    "/carts/{userId}": {
+      "schema": { "$ref": "#/entities/Cart" },
+      "description": "Authenticated user shopping cart."
+    },
+    "/wishlists/{userId}": {
+      "schema": { "$ref": "#/entities/Wishlist" },
+      "description": "Authenticated user wishlist."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer orders."
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Payment transaction records."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Verified purchase reviews."
+    }
+  }
+}
