@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AlertCircle,
   Check,
+  CheckCircle2,
+  DollarSign,
   Edit3,
   Eye,
   EyeOff,
+  Globe,
+  MapPin,
   Package,
   Plus,
   RotateCcw,
+  Search,
   ShieldAlert,
   Trash2,
+  Truck,
   Upload,
+  X,
 } from 'lucide-react';
 import {
   Box,
@@ -22,6 +30,16 @@ import {
   ProductAvailability,
   User,
 } from '../types';
+import { DeliveryRate } from '../data/defaultDeliveryRates';
+import {
+  addDeliveryRate,
+  deleteDeliveryRate,
+  getAllDeliveryRates,
+  resetDeliveryRatesToDefault,
+  toggleDeliveryRateActive,
+  togglePayOnArrival,
+  updateDeliveryRate,
+} from '../services/deliveryService';
 import {
   createProductAdmin,
   deleteProductAdmin,
@@ -68,7 +86,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   boxes,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'products' | 'collections' | 'boxes' | 'orders'
+    'products' | 'collections' | 'boxes' | 'orders' | 'delivery'
   >('products');
 
   // Product Form State (restores any unsaved draft / uploaded Cloudinary image URLs)
@@ -150,6 +168,30 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [editingShippingOrderId, setEditingShippingOrderId] = useState<
     string | null
   >(null);
+
+  // Delivery Pricing Management State
+  const [deliveryRates, setDeliveryRates] = useState<DeliveryRate[]>(() =>
+    getAllDeliveryRates()
+  );
+  const [deliveryFilter, setDeliveryFilter] = useState<
+    'all' | 'lagos' | 'interstate' | 'international'
+  >('all');
+  const [deliverySearch, setDeliverySearch] = useState('');
+  const [editingRateId, setEditingRateId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState<string>('');
+  const [editCourier, setEditCourier] = useState<string>('');
+  const [editDestination, setEditDestination] = useState<string>('');
+  const [editState, setEditState] = useState<string>('');
+  const [showAddRateModal, setShowAddRateModal] = useState<boolean>(false);
+  const [newRateDestination, setNewRateDestination] = useState('');
+  const [newRateState, setNewRateState] = useState('Lagos');
+  const [newRateRegion, setNewRateRegion] = useState<
+    'lagos' | 'interstate' | 'international'
+  >('lagos');
+  const [newRateCourier, setNewRateCourier] = useState('Standard Lagos Delivery');
+  const [newRatePrice, setNewRatePrice] = useState('');
+  const [newRatePayOnArrival, setNewRatePayOnArrival] = useState(false);
+  const [newRateQuoteRequired, setNewRateQuoteRequired] = useState(false);
 
   // Feedback banner
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -651,6 +693,18 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             }`}
           >
             Orders ({allOrders.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('delivery')}
+            className={`px-4 py-2.5 text-xs font-medium tracking-wider whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeTab === 'delivery'
+                ? 'bg-[#701F36] text-[#F8F6EF]'
+                : 'border border-[#0B0B0B]/15 text-[#0B0B0B]/80 hover:border-[#701F36]'
+            }`}
+          >
+            <Truck className="h-3.5 w-3.5" />
+            <span>Delivery Rates ({deliveryRates.length})</span>
           </button>
         </div>
       </div>
@@ -1432,7 +1486,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
                         <div>
                           <p className="font-medium text-[#0B0B0B]/70 uppercase tracking-wider">
-                            Delivery Destination
+                            Delivery Destination & Courier Route
                           </p>
                           <p className="mt-2 text-[#0B0B0B]/80 font-medium">
                             {order.deliveryInfo.recipientName} ({order.deliveryInfo.phone})
@@ -1443,6 +1497,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             {order.deliveryInfo.postalCode ? ` (${order.deliveryInfo.postalCode})` : ''},{' '}
                             <span className="font-semibold text-[#0B0B0B]">{order.deliveryInfo.country}</span>
                           </p>
+                          <div className="mt-2.5 border-t border-[#0B0B0B]/10 pt-2 space-y-1 text-[11px]">
+                            {(order.selectedDestination || order.deliveryInfo.destinationArea) && (
+                              <p className="text-[#0B0B0B]">
+                                <span className="font-semibold text-[#701F36]">Destination:</span>{' '}
+                                {order.selectedDestination || order.deliveryInfo.destinationArea}
+                              </p>
+                            )}
+                            {(order.selectedCourier || order.deliveryInfo.courierName) && (
+                              <p className="text-[#0B0B0B]">
+                                <span className="font-semibold text-[#701F36]">Courier Route:</span>{' '}
+                                {order.selectedCourier || order.deliveryInfo.courierName}
+                              </p>
+                            )}
+                            <p className="text-[#0B0B0B]">
+                              <span className="font-semibold text-[#701F36]">Delivery Fee:</span>{' '}
+                              {order.shippingFee !== null ? formatNaira(order.shippingFee) : 'Pending Confirmation'}{' '}
+                              <span className="text-[#0B0B0B]/60">
+                                ({order.deliveryPaymentMethod === 'courier_on_arrival'
+                                  ? 'Payable to courier on arrival'
+                                  : 'Paid online via Paystack'})
+                              </span>
+                            </p>
+                          </div>
                           {order.deliveryInfo.deliveryNotes && (
                             <p className="mt-1.5 text-[11px] italic text-[#0B0B0B]/60">
                               Notes: {order.deliveryInfo.deliveryNotes}
@@ -1571,6 +1648,532 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 5: DELIVERY RATES MANAGEMENT */}
+      {activeTab === 'delivery' && (
+        <div className="mt-10">
+          <div className="flex flex-col justify-between gap-4 border-b border-[#0B0B0B]/12 pb-4 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs tracking-[0.2em] text-[#701F36] uppercase font-medium">
+                Official Logistics & Route Pricing
+              </p>
+              <h2 className="mt-1 font-display text-xl tracking-wider text-[#0B0B0B] tabular-nums">
+                Delivery Rates ({deliveryRates.length})
+              </h2>
+              <p className="mt-0.5 text-xs text-[#0B0B0B]/60">
+                Manage official Lagos, Interstate (GUO, Steve Nnam, LIBMOT, Iyare, Park Garage), and International quote routes. All changes apply in real-time to checkout.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddRateModal(!showAddRateModal)}
+                className="inline-flex items-center gap-1.5 bg-[#701F36] px-3.5 py-2 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Destination Route</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Reset all delivery destinations and prices to the official canonical schedule (73 Lagos + Interstate + International routes)?'
+                    )
+                  ) {
+                    const reset = resetDeliveryRatesToDefault();
+                    setDeliveryRates(reset);
+                    setFeedbackMessage(
+                      'All delivery rates have been reset to the canonical schedule.'
+                    );
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 border border-[#0B0B0B]/20 bg-white px-3.5 py-2 text-xs font-medium text-[#0B0B0B] hover:border-[#701F36] hover:text-[#701F36] transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Reset to Canonical Schedule</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Add New Rate Form (Collapsible) */}
+          {showAddRateModal && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmedDest = newRateDestination.trim();
+                if (!trimmedDest) {
+                  setErrorMessage('Please enter a destination name.');
+                  return;
+                }
+
+                let numPrice: number | null = null;
+                if (!newRateQuoteRequired) {
+                  numPrice = Number(newRatePrice);
+                  if (!Number.isFinite(numPrice) || numPrice < 0) {
+                    setErrorMessage('Please enter a valid price in NGN (0 or greater).');
+                    return;
+                  }
+                }
+
+                const updated = addDeliveryRate({
+                  destination: trimmedDest,
+                  state: newRateState.trim() || undefined,
+                  region: newRateRegion,
+                  courier: newRateCourier.trim() || 'Standard Delivery',
+                  price: numPrice,
+                  quoteRequired: newRateQuoteRequired,
+                  payOnArrivalAllowed: newRatePayOnArrival,
+                  active: true,
+                });
+
+                setDeliveryRates(updated);
+                setShowAddRateModal(false);
+                setNewRateDestination('');
+                setNewRatePrice('');
+                setFeedbackMessage(
+                  `Successfully added delivery destination: ${trimmedDest} (${newRateCourier}).`
+                );
+                setErrorMessage(null);
+              }}
+              className="mt-6 border border-[#701F36]/30 bg-[#F4F1E8] p-5 sm:p-6"
+            >
+              <div className="flex items-center justify-between border-b border-[#0B0B0B]/10 pb-3 mb-4">
+                <h3 className="font-display text-sm tracking-wider uppercase text-[#701F36]">
+                  Add New Delivery Destination & Route
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAddRateModal(false)}
+                  className="text-[#0B0B0B]/60 hover:text-[#0B0B0B]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-[#0B0B0B]/80">
+                    Destination Area / City *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Lekki Phase 2, Asaba, etc."
+                    value={newRateDestination}
+                    onChange={(e) => setNewRateDestination(e.target.value)}
+                    className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#0B0B0B]/80">
+                    State / Region
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Lagos, Delta, Edo, etc."
+                    value={newRateState}
+                    onChange={(e) => setNewRateState(e.target.value)}
+                    className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#0B0B0B]/80">
+                    Geographic Region
+                  </label>
+                  <select
+                    value={newRateRegion}
+                    onChange={(e) =>
+                      setNewRateRegion(
+                        e.target.value as 'lagos' | 'interstate' | 'international'
+                      )
+                    }
+                    className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                  >
+                    <option value="lagos">Lagos</option>
+                    <option value="interstate">Interstate</option>
+                    <option value="international">International</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#0B0B0B]/80">
+                    Courier Route Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. GUO, Steve Nnam, LIBMOT, Standard..."
+                    value={newRateCourier}
+                    onChange={(e) => setNewRateCourier(e.target.value)}
+                    className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#0B0B0B]/80">
+                    Price in NGN (₦) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={newRateQuoteRequired}
+                    placeholder="e.g. 5000"
+                    value={newRatePrice}
+                    onChange={(e) => setNewRatePrice(e.target.value)}
+                    className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs tabular-nums text-[#0B0B0B] focus:border-[#701F36] focus:outline-none disabled:bg-gray-100"
+                  />
+                </div>
+
+                <div className="flex flex-col justify-end space-y-2">
+                  <label className="flex items-center gap-2 text-xs text-[#0B0B0B] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newRatePayOnArrival}
+                      onChange={(e) => setNewRatePayOnArrival(e.target.checked)}
+                      className="accent-[#701F36]"
+                    />
+                    <span>Allow Payment to Courier on Arrival</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-[#0B0B0B] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newRateQuoteRequired}
+                      onChange={(e) => setNewRateQuoteRequired(e.target.checked)}
+                      className="accent-[#701F36]"
+                    />
+                    <span>Quote Required (No Fixed Price)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-3 border-t border-[#0B0B0B]/10 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRateModal(false)}
+                  className="border border-[#0B0B0B]/20 px-4 py-2 text-xs font-medium text-[#0B0B0B] hover:bg-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-[#701F36] px-5 py-2 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors"
+                >
+                  Save Destination
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Search & Filters */}
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-[#0B0B0B]/10 pb-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setDeliveryFilter('all')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  deliveryFilter === 'all'
+                    ? 'bg-[#701F36] text-[#F8F6EF]'
+                    : 'border border-[#0B0B0B]/15 bg-white text-[#0B0B0B]/80 hover:border-[#701F36]'
+                }`}
+              >
+                All ({deliveryRates.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeliveryFilter('lagos')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  deliveryFilter === 'lagos'
+                    ? 'bg-[#701F36] text-[#F8F6EF]'
+                    : 'border border-[#0B0B0B]/15 bg-white text-[#0B0B0B]/80 hover:border-[#701F36]'
+                }`}
+              >
+                Lagos ({deliveryRates.filter((r) => r.region === 'lagos').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeliveryFilter('interstate')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  deliveryFilter === 'interstate'
+                    ? 'bg-[#701F36] text-[#F8F6EF]'
+                    : 'border border-[#0B0B0B]/15 bg-white text-[#0B0B0B]/80 hover:border-[#701F36]'
+                }`}
+              >
+                Interstate ({deliveryRates.filter((r) => r.region === 'interstate').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeliveryFilter('international')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  deliveryFilter === 'international'
+                    ? 'bg-[#701F36] text-[#F8F6EF]'
+                    : 'border border-[#0B0B0B]/15 bg-white text-[#0B0B0B]/80 hover:border-[#701F36]'
+                }`}
+              >
+                International ({deliveryRates.filter((r) => r.region === 'international').length})
+              </button>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#0B0B0B]/40" />
+              <input
+                type="text"
+                value={deliverySearch}
+                onChange={(e) => setDeliverySearch(e.target.value)}
+                placeholder="Search destination or courier..."
+                className="w-full border border-[#0B0B0B]/20 bg-white pl-9 pr-3 py-1.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Rates Table */}
+          <div className="mt-4 overflow-x-auto border border-[#0B0B0B]/15 bg-white">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-[#0B0B0B]/15 bg-[#F4F1E8]/70 text-[#0B0B0B]/80 uppercase tracking-wider text-[10px]">
+                  <th className="p-3">Destination</th>
+                  <th className="p-3">State / Region</th>
+                  <th className="p-3">Courier Route</th>
+                  <th className="p-3">Price (NGN)</th>
+                  <th className="p-3">Pay on Arrival</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#0B0B0B]/10">
+                {deliveryRates
+                  .filter((rate) => {
+                    if (deliveryFilter !== 'all' && rate.region !== deliveryFilter) {
+                      return false;
+                    }
+                    if (deliverySearch.trim()) {
+                      const query = deliverySearch.toLowerCase();
+                      const matchDest = rate.destination.toLowerCase().includes(query);
+                      const matchCourier = rate.courier.toLowerCase().includes(query);
+                      const matchState = (rate.state || '').toLowerCase().includes(query);
+                      return matchDest || matchCourier || matchState;
+                    }
+                    return true;
+                  })
+                  .map((rate) => {
+                    const isEditing = editingRateId === rate.id;
+
+                    return (
+                      <tr
+                        key={rate.id}
+                        className={`hover:bg-[#F4F1E8]/40 transition-colors ${
+                          !rate.active ? 'opacity-60 bg-gray-50' : ''
+                        }`}
+                      >
+                        {/* Destination */}
+                        <td className="p-3 font-medium text-[#0B0B0B]">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editDestination}
+                              onChange={(e) => setEditDestination(e.target.value)}
+                              className="border border-[#0B0B0B]/20 px-2 py-1 text-xs w-full"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5 text-[#701F36] shrink-0" />
+                              <span>{rate.destination}</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* State */}
+                        <td className="p-3 text-[#0B0B0B]/70">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editState}
+                              onChange={(e) => setEditState(e.target.value)}
+                              className="border border-[#0B0B0B]/20 px-2 py-1 text-xs w-full"
+                            />
+                          ) : (
+                            <span>{rate.state || '—'}</span>
+                          )}
+                        </td>
+
+                        {/* Courier Route */}
+                        <td className="p-3 font-medium text-[#0B0B0B]">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editCourier}
+                              onChange={(e) => setEditCourier(e.target.value)}
+                              className="border border-[#0B0B0B]/20 px-2 py-1 text-xs w-full"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center gap-1 bg-[#F4F1E8] px-2 py-0.5 text-[11px] font-mono text-[#0B0B0B]">
+                              {rate.courier}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Price */}
+                        <td className="p-3">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editPrice}
+                              onChange={(e) => setEditPrice(e.target.value)}
+                              placeholder="NGN Price"
+                              className="border border-[#0B0B0B]/20 px-2 py-1 text-xs tabular-nums w-24"
+                            />
+                          ) : rate.quoteRequired || rate.price === null ? (
+                            <span className="text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 border border-amber-200">
+                              Quote Required
+                            </span>
+                          ) : (
+                            <span className="font-display font-semibold tabular-nums text-[#701F36]">
+                              {formatNaira(rate.price)}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Pay on Arrival Permission */}
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = togglePayOnArrival(rate.id);
+                              setDeliveryRates(updated);
+                              setFeedbackMessage(
+                                `Pay on arrival for "${rate.destination}" (${rate.courier}) is now ${
+                                  !rate.payOnArrivalAllowed ? 'allowed' : 'disabled'
+                                }.`
+                              );
+                            }}
+                            className={`px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase border transition-colors ${
+                              rate.payOnArrivalAllowed
+                                ? 'border-amber-600/40 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                                : 'border-[#0B0B0B]/15 bg-gray-50 text-[#0B0B0B]/60 hover:border-[#701F36]'
+                            }`}
+                          >
+                            {rate.payOnArrivalAllowed ? 'Allowed' : 'Paystack Only'}
+                          </button>
+                        </td>
+
+                        {/* Status (Active / Disabled) */}
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = toggleDeliveryRateActive(rate.id);
+                              setDeliveryRates(updated);
+                              setFeedbackMessage(
+                                `"${rate.destination}" (${rate.courier}) is now ${
+                                  !rate.active ? 'active' : 'disabled'
+                                }.`
+                              );
+                            }}
+                            className={`px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase border transition-colors ${
+                              rate.active
+                                ? 'border-emerald-600/40 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                                : 'border-red-600/40 bg-red-50 text-red-900 hover:bg-red-100'
+                            }`}
+                          >
+                            {rate.active ? 'Active' : 'Disabled'}
+                          </button>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const num =
+                                      editPrice.trim().length > 0
+                                        ? Number(editPrice)
+                                        : null;
+                                    const updated = updateDeliveryRate(rate.id, {
+                                      destination: editDestination.trim(),
+                                      state: editState.trim() || undefined,
+                                      courier: editCourier.trim(),
+                                      price:
+                                        num !== null && Number.isFinite(num)
+                                          ? num
+                                          : rate.price,
+                                    });
+                                    setDeliveryRates(updated);
+                                    setEditingRateId(null);
+                                    setFeedbackMessage(
+                                      `Updated rate for ${editDestination.trim()} (${editCourier.trim()}).`
+                                    );
+                                  }}
+                                  className="bg-[#701F36] text-[#F8F6EF] px-2 py-1 text-[11px] font-medium hover:bg-[#0B0B0B]"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRateId(null)}
+                                  className="border border-[#0B0B0B]/20 px-2 py-1 text-[11px] text-[#0B0B0B] hover:bg-gray-100"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingRateId(rate.id);
+                                    setEditPrice(
+                                      rate.price !== null ? String(rate.price) : ''
+                                    );
+                                    setEditCourier(rate.courier);
+                                    setEditDestination(rate.destination);
+                                    setEditState(rate.state || '');
+                                  }}
+                                  aria-label={`Edit ${rate.destination}`}
+                                  className="text-[#0B0B0B]/60 hover:text-[#701F36] p-1"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Delete rate for "${rate.destination}" (${rate.courier})?`
+                                      )
+                                    ) {
+                                      const updated = deleteDeliveryRate(rate.id);
+                                      setDeliveryRates(updated);
+                                      setFeedbackMessage(
+                                        `Deleted rate for ${rate.destination}.`
+                                      );
+                                    }
+                                  }}
+                                  aria-label={`Delete ${rate.destination}`}
+                                  className="text-[#0B0B0B]/40 hover:text-red-700 p-1"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

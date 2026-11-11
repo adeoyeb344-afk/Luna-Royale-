@@ -67,6 +67,22 @@ export function mapFirestoreOrder(
       : 'pending';
 
   const rawDelivery = (data.deliveryInfo as Record<string, unknown>) || {};
+  const deliveryPaymentMethod: 'paystack' | 'courier_on_arrival' =
+    data.deliveryPaymentMethod === 'courier_on_arrival' ||
+    rawDelivery.deliveryPaymentMethod === 'courier_on_arrival'
+      ? 'courier_on_arrival'
+      : 'paystack';
+
+  const selectedDestination = sanitizeString(
+    data.selectedDestination || rawDelivery.destinationArea || data.destination,
+    120
+  ) || undefined;
+
+  const selectedCourier = sanitizeString(
+    data.selectedCourier || rawDelivery.courierName || data.courier,
+    120
+  ) || undefined;
+
   const deliveryInfo: DeliveryInfo = {
     recipientName: sanitizeString(
       rawDelivery.recipientName || data.customerName || data.name,
@@ -79,6 +95,9 @@ export function mapFirestoreOrder(
     postalCode:
       sanitizeString(rawDelivery.postalCode || data.postalCode, 40) || undefined,
     country: sanitizeString(rawDelivery.country, 100) || 'Nigeria',
+    destinationArea: selectedDestination,
+    courierName: selectedCourier,
+    deliveryPaymentMethod,
     deliveryNotes: sanitizeString(rawDelivery.deliveryNotes, 500),
   };
 
@@ -96,6 +115,9 @@ export function mapFirestoreOrder(
     shippingStatus,
     shippingConfirmedAt: normalizeTimestamp(data.shippingConfirmedAt),
     shippingNotes: sanitizeString(data.shippingNotes, 500) || undefined,
+    selectedDestination,
+    selectedCourier,
+    deliveryPaymentMethod,
     totalAmount,
     currency: 'NGN',
     status,
@@ -193,6 +215,11 @@ export async function createOrder(params: {
   customerName: string;
   items: CartItem[];
   deliveryInfo: DeliveryInfo;
+  shippingFee?: number | null;
+  selectedDestination?: string;
+  selectedCourier?: string;
+  deliveryPaymentMethod?: 'paystack' | 'courier_on_arrival';
+  shippingStatus?: ShippingFeeStatus;
   paymentReference?: string;
 }): Promise<string> {
   const cleanItems = sanitizeCartItems(params.items);
@@ -201,15 +228,34 @@ export async function createOrder(params: {
   }
 
   const subtotal = calculateCartSubtotal(cleanItems);
+  const cleanFee =
+    typeof params.shippingFee === 'number' && Number.isFinite(params.shippingFee) && params.shippingFee >= 0
+      ? params.shippingFee
+      : null;
+
+  const isAutoConfirmed = cleanFee !== null;
+  const shippingStatus: ShippingFeeStatus =
+    params.shippingStatus || (isAutoConfirmed ? 'confirmed' : 'pending_confirmation');
+
+  const deliveryPaymentMethod = params.deliveryPaymentMethod || 'paystack';
+  const totalAmount =
+    deliveryPaymentMethod === 'courier_on_arrival'
+      ? subtotal
+      : subtotal + (cleanFee || 0);
+
   const payload: Record<string, unknown> = {
     userId: params.userId,
     customerEmail: sanitizeString(params.customerEmail, 256),
     customerName: sanitizeString(params.customerName, 160),
     items: cleanItems,
     subtotal,
-    shippingFee: null,
-    shippingStatus: 'pending_confirmation',
-    totalAmount: subtotal,
+    shippingFee: cleanFee,
+    shippingStatus,
+    shippingConfirmedAt: isAutoConfirmed ? serverTimestamp() : null,
+    selectedDestination: sanitizeString(params.selectedDestination || params.deliveryInfo.destinationArea, 120),
+    selectedCourier: sanitizeString(params.selectedCourier || params.deliveryInfo.courierName, 120),
+    deliveryPaymentMethod,
+    totalAmount,
     currency: 'NGN',
     status: 'pending',
     deliveryInfo: {
@@ -220,6 +266,9 @@ export async function createOrder(params: {
       state: sanitizeString(params.deliveryInfo.state, 100),
       postalCode: sanitizeString(params.deliveryInfo.postalCode, 40) || '',
       country: sanitizeString(params.deliveryInfo.country, 100) || 'Nigeria',
+      destinationArea: sanitizeString(params.selectedDestination || params.deliveryInfo.destinationArea, 120),
+      courierName: sanitizeString(params.selectedCourier || params.deliveryInfo.courierName, 120),
+      deliveryPaymentMethod,
       deliveryNotes: sanitizeString(params.deliveryInfo.deliveryNotes, 500),
     },
     createdAt: serverTimestamp(),

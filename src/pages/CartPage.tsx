@@ -1,5 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  CreditCard,
+  ExternalLink,
+  Globe,
+  HelpCircle,
+  Info,
+  Loader2,
+  Minus,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
+  Trash2,
+  Truck,
+} from 'lucide-react';
 import { AppSection, CartItem, DeliveryInfo, User } from '../types';
 import { calculateCartSubtotal } from '../services/cartService';
 import { formatNaira } from '../services/firestoreService';
@@ -13,11 +29,29 @@ import {
 import { updateUserProfileDetails } from '../services/authService';
 import { getUserFriendlyErrorMessage } from '../services/firebase';
 import { ProductMedia } from '../components/ProductMedia';
+import {
+  getAllDeliveryRates,
+  lookupDeliveryOptions,
+} from '../services/deliveryService';
+import { DeliveryRate } from '../data/defaultDeliveryRates';
 
 interface ActivePaymentSession {
   orderId: string;
   reference: string;
   authorizationUrl: string;
+}
+
+interface ConfirmedOrderSummary {
+  orderId: string;
+  paymentReference?: string;
+  subtotal: number;
+  deliveryFee: number;
+  destination: string;
+  courier: string;
+  totalPaid: number;
+  paymentMethod: 'paystack' | 'courier_on_arrival';
+  recipientName: string;
+  deliveryAddress: string;
 }
 
 interface CartPageProps {
@@ -37,6 +71,7 @@ export const CartPage: React.FC<CartPageProps> = ({
   onClearCart,
   onNavigate,
 }) => {
+  // Delivery Form Fields
   const [recipientName, setRecipientName] = useState(
     user?.deliveryInfo?.recipientName || user?.fullName || ''
   );
@@ -46,42 +81,91 @@ export const CartPage: React.FC<CartPageProps> = ({
   const [streetAddress, setStreetAddress] = useState(
     user?.deliveryInfo?.streetAddress || ''
   );
-  const [city, setCity] = useState(user?.deliveryInfo?.city || '');
-  const [stateName, setStateName] = useState(user?.deliveryInfo?.state || '');
-  const [postalCode, setPostalCode] = useState(
-    user?.deliveryInfo?.postalCode || ''
-  );
   const [country, setCountry] = useState(
     user?.deliveryInfo?.country || 'Nigeria'
+  );
+  const [stateName, setStateName] = useState(
+    user?.deliveryInfo?.state || 'Lagos'
+  );
+  const [cityOrArea, setCityOrArea] = useState(
+    user?.deliveryInfo?.destinationArea || user?.deliveryInfo?.city || 'Ikeja'
+  );
+  const [postalCode, setPostalCode] = useState(
+    user?.deliveryInfo?.postalCode || ''
   );
   const [deliveryNotes, setDeliveryNotes] = useState(
     user?.deliveryInfo?.deliveryNotes || ''
   );
 
+  // Delivery Pricing & Courier Selection State
+  const [deliveryRates, setDeliveryRates] = useState<DeliveryRate[]>(() =>
+    getAllDeliveryRates()
+  );
+  const [selectedRateId, setSelectedRateId] = useState<string>('');
+  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
+    'paystack' | 'courier_on_arrival'
+  >('paystack');
+
+  // Checkout & Gateway States
   const [paystackConfigured, setPaystackConfigured] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
-  const [activePaymentSession, setActivePaymentSession] = useState<ActivePaymentSession | null>(null);
+  const [activePaymentSession, setActivePaymentSession] =
+    useState<ActivePaymentSession | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
-  const [confirmedPaymentRef, setConfirmedPaymentRef] = useState<string | null>(null);
-  const [placedOrder, setPlacedOrder] = useState<{
-    orderId: string;
-    subtotal: number;
-    deliveryInfo: DeliveryInfo;
-  } | null>(null);
+  const [confirmedPaymentRef, setConfirmedPaymentRef] = useState<string | null>(
+    null
+  );
+  const [confirmedSummary, setConfirmedSummary] =
+    useState<ConfirmedOrderSummary | null>(null);
 
+  // Sync delivery rates dynamically if updated in admin dashboard
+  useEffect(() => {
+    const handleRatesUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<DeliveryRate[]>;
+      if (customEvent.detail) {
+        setDeliveryRates(customEvent.detail);
+      } else {
+        setDeliveryRates(getAllDeliveryRates());
+      }
+    };
+    window.addEventListener('lr_delivery_rates_updated', handleRatesUpdate);
+    return () => {
+      window.removeEventListener('lr_delivery_rates_updated', handleRatesUpdate);
+    };
+  }, []);
+
+  // Pre-fill user profile if available
   useEffect(() => {
     if (user) {
-      setRecipientName(user.deliveryInfo?.recipientName || user.fullName || '');
-      setPhone(user.deliveryInfo?.phone || user.phone || '');
-      setStreetAddress(user.deliveryInfo?.streetAddress || '');
-      setCity(user.deliveryInfo?.city || '');
-      setStateName(user.deliveryInfo?.state || '');
-      setPostalCode(user.deliveryInfo?.postalCode || '');
-      setCountry(user.deliveryInfo?.country || 'Nigeria');
-      setDeliveryNotes(user.deliveryInfo?.deliveryNotes || '');
+      if (!recipientName) {
+        setRecipientName(user.deliveryInfo?.recipientName || user.fullName || '');
+      }
+      if (!phone) {
+        setPhone(user.deliveryInfo?.phone || user.phone || '');
+      }
+      if (!streetAddress && user.deliveryInfo?.streetAddress) {
+        setStreetAddress(user.deliveryInfo.streetAddress);
+      }
+      if (user.deliveryInfo?.country) {
+        setCountry(user.deliveryInfo.country);
+      }
+      if (user.deliveryInfo?.state) {
+        setStateName(user.deliveryInfo.state);
+      }
+      if (user.deliveryInfo?.destinationArea || user.deliveryInfo?.city) {
+        setCityOrArea(
+          user.deliveryInfo.destinationArea || user.deliveryInfo.city || ''
+        );
+      }
+      if (!postalCode && user.deliveryInfo?.postalCode) {
+        setPostalCode(user.deliveryInfo.postalCode);
+      }
+      if (!deliveryNotes && user.deliveryInfo?.deliveryNotes) {
+        setDeliveryNotes(user.deliveryInfo.deliveryNotes);
+      }
     }
   }, [user]);
 
@@ -91,7 +175,41 @@ export const CartPage: React.FC<CartPageProps> = ({
     });
   }, []);
 
-  // Handle Paystack return callback verification (for direct redirect returns)
+  // Compute lookup results dynamically based on country, state, city/destination
+  const lookupResult = useMemo(() => {
+    return lookupDeliveryOptions({
+      country,
+      state: stateName,
+      cityOrArea,
+      rates: deliveryRates,
+    });
+  }, [country, stateName, cityOrArea, deliveryRates]);
+
+  // Keep selectedRate in sync with lookup options
+  const selectedRate = useMemo(() => {
+    if (!lookupResult.options || lookupResult.options.length === 0) return null;
+    const match = lookupResult.options.find((r) => r.id === selectedRateId);
+    return match || lookupResult.options[0];
+  }, [lookupResult.options, selectedRateId]);
+
+  // Auto-select first available courier route when options change
+  useEffect(() => {
+    if (lookupResult.options && lookupResult.options.length > 0) {
+      const exists = lookupResult.options.some((r) => r.id === selectedRateId);
+      if (!exists) {
+        setSelectedRateId(lookupResult.options[0].id);
+      }
+    }
+  }, [lookupResult.options, selectedRateId]);
+
+  // If selected route doesn't allow payOnArrival, revert to paystack
+  useEffect(() => {
+    if (selectedRate && !selectedRate.payOnArrivalAllowed && deliveryPaymentMethod === 'courier_on_arrival') {
+      setDeliveryPaymentMethod('paystack');
+    }
+  }, [selectedRate, deliveryPaymentMethod]);
+
+  // Handle Paystack return callback verification (redirect flow)
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const paystackRef =
@@ -123,7 +241,6 @@ export const CartPage: React.FC<CartPageProps> = ({
               ).catch(() => {});
             }
 
-            // Only clear cart after confirmed successful server verification
             onClearCart();
             setConfirmedOrderId(effectiveOrderId);
             setConfirmedPaymentRef(paystackRef);
@@ -141,7 +258,6 @@ export const CartPage: React.FC<CartPageProps> = ({
               window.location.pathname
             );
           } else {
-            // Never clear cart on failed, cancelled, or unverified transactions
             setErrorMessage(
               res.error ||
                 'Payment was not completed or could not be verified with Paystack. Your cart has been preserved.'
@@ -170,9 +286,9 @@ export const CartPage: React.FC<CartPageProps> = ({
           setVerifyingPayment(false);
         });
     }
-  }, []);
+  }, [onClearCart]);
 
-  // Background polling for opened Paystack Live checkout window
+  // Background polling for opened Paystack Live checkout session
   useEffect(() => {
     if (!activePaymentSession) return;
 
@@ -210,7 +326,7 @@ export const CartPage: React.FC<CartPageProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [activePaymentSession]);
+  }, [activePaymentSession, onClearCart]);
 
   const handleCheckManualPaymentStatus = async () => {
     if (!activePaymentSession) return;
@@ -253,12 +369,45 @@ export const CartPage: React.FC<CartPageProps> = ({
     }
   };
 
+  // Calculations
   const subtotal = calculateCartSubtotal(items);
+  const deliveryFee =
+    selectedRate && typeof selectedRate.price === 'number'
+      ? selectedRate.price
+      : 0;
+  const isQuoteRequired = lookupResult.quoteRequired;
+  const isUnavailable = lookupResult.isUnavailable;
+
+  // Final Paystack amount (online payment)
+  const isPayOnArrival =
+    deliveryPaymentMethod === 'courier_on_arrival' &&
+    selectedRate?.payOnArrivalAllowed;
+  const paystackAmount = isPayOnArrival ? subtotal : subtotal + deliveryFee;
+  const totalPayable = subtotal + deliveryFee;
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       onNavigate('account');
+      return;
+    }
+
+    if (items.length === 0) {
+      setErrorMessage('Your bag is currently empty.');
+      return;
+    }
+
+    if (isQuoteRequired) {
+      setErrorMessage(
+        'International delivery fee requires a logistics quote. Please contact customer support to receive an official logistics quote.'
+      );
+      return;
+    }
+
+    if (isUnavailable || !selectedRate || selectedRate.price === null) {
+      setErrorMessage(
+        'Delivery fee currently unavailable for this location. Please contact customer support.'
+      );
       return;
     }
 
@@ -269,46 +418,84 @@ export const CartPage: React.FC<CartPageProps> = ({
       recipientName: recipientName.trim(),
       phone: phone.trim(),
       streetAddress: streetAddress.trim(),
-      city: city.trim(),
+      city: cityOrArea.trim(),
       state: stateName.trim(),
       postalCode: postalCode.trim() || undefined,
       country: country.trim() || 'Nigeria',
+      destinationArea: selectedRate.destination,
+      courierName: selectedRate.courier,
+      deliveryPaymentMethod: isPayOnArrival ? 'courier_on_arrival' : 'paystack',
       deliveryNotes: deliveryNotes.trim() || undefined,
     };
 
     try {
-      // Save updated delivery details to the user's profile
+      // 1. Update user profile delivery details (non-blocking)
       await updateUserProfileDetails(user.uid, {
         fullName: user.fullName || recipientName.trim(),
         phone: user.phone || phone.trim(),
         deliveryInfo,
-      }).catch(() => {
-        // Non-blocking if profile update has stricter rules
-      });
+      }).catch(() => {});
 
-      // 1. Create order in Firestore with pending shipping fee confirmation
+      // 2. Create order in Firestore with automatically confirmed delivery fee and courier details
       const orderId = await createOrder({
         userId: user.uid,
         customerEmail: user.email,
         customerName: user.fullName || recipientName.trim(),
         items,
         deliveryInfo,
+        shippingFee: deliveryFee,
+        selectedDestination: selectedRate.destination,
+        selectedCourier: selectedRate.courier,
+        deliveryPaymentMethod: isPayOnArrival ? 'courier_on_arrival' : 'paystack',
+        shippingStatus: 'confirmed',
       });
 
-      // 2. Clear customer's shopping cart
-      onClearCart();
+      try {
+        sessionStorage.setItem('lr_pending_order_id', orderId);
+      } catch {
+        // Ignore storage errors
+      }
 
-      // 3. Display the dedicated "Order Received — Awaiting Shipping Confirmation" screen
-      setPlacedOrder({
+      // Save summary details for order confirmation display
+      setConfirmedSummary({
         orderId,
         subtotal,
-        deliveryInfo,
+        deliveryFee,
+        destination: selectedRate.destination,
+        courier: selectedRate.courier,
+        totalPaid: paystackAmount,
+        paymentMethod: isPayOnArrival ? 'courier_on_arrival' : 'paystack',
+        recipientName: recipientName.trim(),
+        deliveryAddress: `${streetAddress.trim()}, ${cityOrArea.trim()}, ${stateName.trim()}`,
       });
+
+      // 3. Initialize Paystack Transaction directly with product subtotal + delivery fee
+      const callbackUrl = `${window.location.origin}/cart?order_id=${encodeURIComponent(orderId)}`;
+      const tx = await initializePaymentTransaction({
+        email: user.email,
+        amountNaira: paystackAmount,
+        orderId,
+        items,
+        callbackUrl,
+      });
+
+      // 4. Set active payment session for in-place verification & polling
+      setActivePaymentSession({
+        orderId,
+        reference: tx.reference,
+        authorizationUrl: tx.authorization_url,
+      });
+
+      // Open Paystack Live checkout popup/window
+      const win = window.open(tx.authorization_url, '_blank');
+      if (!win) {
+        // Popup was blocked by browser; user will click the explicit button
+      }
     } catch (err) {
       setErrorMessage(
         getUserFriendlyErrorMessage(
           err,
-          'Unable to submit order. Please verify your details and try again.'
+          'Unable to initialize checkout with Paystack. Please try again.'
         )
       );
     } finally {
@@ -316,72 +503,7 @@ export const CartPage: React.FC<CartPageProps> = ({
     }
   };
 
-  if (placedOrder) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="border border-[#701F36]/25 bg-[#F4F1E8]/70 p-8 sm:p-12 text-center">
-          <p className="text-xs tracking-[0.2em] text-[#701F36] uppercase font-medium">
-            Order Received
-          </p>
-          <h1 className="mt-2 font-display text-2xl sm:text-3xl text-[#0B0B0B]">
-            Shipping Fee Pending Confirmation
-          </h1>
-          <p className="mt-2 font-mono text-xs text-[#0B0B0B]/60">
-            Order Reference: #{placedOrder.orderId}
-          </p>
-
-          <div className="mx-auto mt-6 max-w-md border border-[#0B0B0B]/12 bg-white p-5 text-left text-xs space-y-2.5">
-            <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
-              <span className="text-[#0B0B0B]/70">Delivery Destination:</span>
-              <span className="font-medium text-[#0B0B0B] text-right">
-                {placedOrder.deliveryInfo.city}, {placedOrder.deliveryInfo.country}
-              </span>
-            </div>
-            <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
-              <span className="text-[#0B0B0B]/70">Products Subtotal:</span>
-              <span className="font-medium tabular-nums text-[#0B0B0B]">
-                {formatNaira(placedOrder.subtotal)}
-              </span>
-            </div>
-            <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
-              <span className="text-[#0B0B0B]/70">Worldwide Shipping:</span>
-              <span className="font-medium text-[#701F36] uppercase tracking-wider">
-                Pending Confirmation
-              </span>
-            </div>
-            <div className="flex justify-between pt-1">
-              <span className="font-semibold text-[#0B0B0B]">Total Payable:</span>
-              <span className="text-[#0B0B0B]/60 italic">
-                Calculated after confirmation
-              </span>
-            </div>
-          </div>
-
-          <p className="mx-auto mt-6 max-w-md text-xs leading-relaxed text-[#0B0B0B]/75">
-            Thank you for ordering with LUNA ROYALE. Because we provide worldwide white-glove shipping, our atelier team will review your destination and determine the exact courier fee. Once confirmed, you can review the final total and complete payment with Paystack in your Orders section.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <button
-              type="button"
-              onClick={() => onNavigate('orders')}
-              className="bg-[#701F36] px-6 py-3 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors"
-            >
-              View in My Orders
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('shop')}
-              className="border border-[#0B0B0B]/25 px-6 py-3 text-xs font-medium tracking-wider text-[#0B0B0B] uppercase hover:border-[#701F36] hover:text-[#701F36] transition-colors"
-            >
-              Continue Browsing
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // 1. Active Payment Session Screen (Paystack Window / Verification)
   if (activePaymentSession) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
@@ -398,8 +520,34 @@ export const CartPage: React.FC<CartPageProps> = ({
           <p className="mt-2 font-mono text-xs text-[#0B0B0B]/60">
             Order Reference: #{activePaymentSession.orderId}
           </p>
-          <p className="mx-auto mt-4 max-w-md text-xs leading-relaxed text-[#0B0B0B]/75">
-            A secure Paystack Live checkout window has been prepared. If your browser blocked the window from opening automatically, click below to complete your payment on Paystack.
+
+          {/* Breakdown summary preview during payment */}
+          <div className="mx-auto mt-6 max-w-md border border-[#0B0B0B]/12 bg-white p-4 text-left text-xs space-y-2">
+            <div className="flex justify-between text-[#0B0B0B]/70">
+              <span>Products Subtotal:</span>
+              <span className="font-medium text-[#0B0B0B]">{formatNaira(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-[#0B0B0B]/70">
+              <span>Delivery Fee ({selectedRate?.courier || 'Courier'}):</span>
+              <span className="font-medium text-[#701F36]">
+                {formatNaira(deliveryFee)}
+              </span>
+            </div>
+            {isPayOnArrival && (
+              <p className="text-[11px] text-amber-800 italic">
+                * Delivery fee of {formatNaira(deliveryFee)} will be collected by courier upon arrival.
+              </p>
+            )}
+            <div className="flex justify-between border-t border-[#0B0B0B]/10 pt-2 font-semibold text-[#0B0B0B]">
+              <span>Paystack Amount:</span>
+              <span className="font-display text-sm text-[#701F36]">
+                {formatNaira(paystackAmount)}
+              </span>
+            </div>
+          </div>
+
+          <p className="mx-auto mt-5 max-w-md text-xs leading-relaxed text-[#0B0B0B]/75">
+            A secure Paystack Live checkout window has opened. Complete your card, bank transfer, or USSD payment, and this page will automatically confirm your order.
           </p>
 
           {errorMessage && (
@@ -439,7 +587,7 @@ export const CartPage: React.FC<CartPageProps> = ({
           <div className="mt-8 border-t border-[#0B0B0B]/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#0B0B0B]/65">
             <span className="flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin text-[#701F36]" />
-              Awaiting payment confirmation...
+              Awaiting payment verification...
             </span>
             <button
               type="button"
@@ -457,12 +605,13 @@ export const CartPage: React.FC<CartPageProps> = ({
     );
   }
 
+  // 2. Verifying Payment Loading Screen
   if (verifyingPayment) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-24 sm:px-6 lg:px-8">
         <div className="border border-[#0B0B0B]/15 bg-[#F4F1E8]/60 p-8 sm:p-12 text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#701F36]" />
-          <p className="mt-4 text-xs tracking-[0.2em] text-[#701F36] uppercase">
+          <p className="mt-4 text-xs tracking-[0.2em] text-[#701F36] uppercase font-medium">
             Payment Verification
           </p>
           <h1 className="mt-2 font-display text-2xl text-[#0B0B0B]">
@@ -476,12 +625,16 @@ export const CartPage: React.FC<CartPageProps> = ({
     );
   }
 
+  // 3. Confirmed Order Screen (Full breakdown & confirmation)
   if (confirmedOrderId) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="border border-[#0B0B0B]/15 bg-[#F4F1E8]/60 p-8 sm:p-12 text-center">
-          <p className="text-xs tracking-[0.2em] text-[#701F36] uppercase">
-            Order Confirmed
+        <div className="border border-[#701F36]/25 bg-[#F4F1E8]/70 p-8 sm:p-12 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <CheckCircle2 className="h-8 w-8" />
+          </div>
+          <p className="mt-4 text-xs tracking-[0.2em] text-[#701F36] uppercase font-medium">
+            Order Confirmed & Paid
           </p>
           <h1 className="mt-2 font-display text-2xl sm:text-3xl text-[#0B0B0B]">
             Thank You for Your Order
@@ -491,24 +644,83 @@ export const CartPage: React.FC<CartPageProps> = ({
           </p>
           {confirmedPaymentRef && (
             <p className="mt-1 font-mono text-xs text-[#0B0B0B]/50">
-              Payment Reference: {confirmedPaymentRef}
+              Paystack Reference: {confirmedPaymentRef}
             </p>
           )}
-          <p className="mx-auto mt-4 max-w-md text-xs leading-relaxed text-[#0B0B0B]/75">
-            Your order and payment have been securely recorded in your LUNA ROYALE account. You can view its real-time fulfillment status at any time in My Orders.
+
+          {/* Full separate breakdown */}
+          <div className="mx-auto mt-8 max-w-md border border-[#0B0B0B]/12 bg-white p-5 text-left text-xs space-y-3">
+            <h3 className="font-display text-xs tracking-wider uppercase text-[#701F36] border-b border-[#0B0B0B]/10 pb-2">
+              Payment & Dispatch Summary
+            </h3>
+            {confirmedSummary?.destination && (
+              <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
+                <span className="text-[#0B0B0B]/70">Delivery Destination:</span>
+                <span className="font-medium text-[#0B0B0B] text-right">
+                  {confirmedSummary.destination}
+                </span>
+              </div>
+            )}
+            {confirmedSummary?.courier && (
+              <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
+                <span className="text-[#0B0B0B]/70">Selected Courier Route:</span>
+                <span className="font-medium text-[#0B0B0B] text-right">
+                  {confirmedSummary.courier}
+                </span>
+              </div>
+            )}
+            {confirmedSummary?.subtotal !== undefined && (
+              <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
+                <span className="text-[#0B0B0B]/70">Product Subtotal:</span>
+                <span className="font-medium tabular-nums text-[#0B0B0B]">
+                  {formatNaira(confirmedSummary.subtotal)}
+                </span>
+              </div>
+            )}
+            {confirmedSummary?.deliveryFee !== undefined && (
+              <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
+                <span className="text-[#0B0B0B]/70">Delivery Fee:</span>
+                <span className="font-medium tabular-nums text-[#701F36]">
+                  {formatNaira(confirmedSummary.deliveryFee)}
+                  {confirmedSummary.paymentMethod === 'courier_on_arrival' && (
+                    <span className="text-[10px] text-amber-800 ml-1 font-normal">
+                      (Payable to courier on arrival)
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between border-b border-[#0B0B0B]/8 pb-2">
+              <span className="text-[#0B0B0B]/70">Discount:</span>
+              <span className="font-medium tabular-nums text-[#0B0B0B]">₦0</span>
+            </div>
+            <div className="flex justify-between pt-1 font-semibold text-sm text-[#0B0B0B]">
+              <span>Total Paid Online:</span>
+              <span className="font-display text-[#701F36]">
+                {formatNaira(
+                  confirmedSummary?.totalPaid ??
+                    (confirmedSummary?.subtotal ?? 0) + (confirmedSummary?.deliveryFee ?? 0)
+                )}
+              </span>
+            </div>
+          </div>
+
+          <p className="mx-auto mt-6 max-w-md text-xs leading-relaxed text-[#0B0B0B]/75">
+            Your payment has been verified directly through Paystack and your order is now in preparation with the LUNA ROYALE atelier. You can monitor fulfillment updates at any time in My Orders.
           </p>
+
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <button
               type="button"
               onClick={() => onNavigate('orders')}
-              className="bg-[#701F36] px-6 py-3 text-xs font-medium tracking-wider text-[#F8F6EF] hover:bg-[#0B0B0B] transition-colors"
+              className="bg-[#701F36] px-6 py-3 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors"
             >
-              View My Orders
+              View in My Orders
             </button>
             <button
               type="button"
               onClick={() => onNavigate('shop')}
-              className="border border-[#0B0B0B]/25 px-6 py-3 text-xs font-medium tracking-wider text-[#0B0B0B] hover:border-[#701F36] hover:text-[#701F36] transition-colors"
+              className="border border-[#0B0B0B]/25 px-6 py-3 text-xs font-medium tracking-wider text-[#0B0B0B] uppercase hover:border-[#701F36] hover:text-[#701F36] transition-colors"
             >
               Continue Shopping
             </button>
@@ -518,14 +730,15 @@ export const CartPage: React.FC<CartPageProps> = ({
     );
   }
 
+  // 4. Standard Cart & Checkout View
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
       <div className="border-b border-[#0B0B0B]/12 pb-8">
-        <p className="text-xs tracking-[0.2em] text-[#701F36] uppercase">
+        <p className="text-xs tracking-[0.2em] text-[#701F36] uppercase font-medium">
           LUNA ROYALE Bag
         </p>
         <h1 className="mt-2 font-display text-3xl sm:text-4xl font-normal tracking-wide text-[#0B0B0B]">
-          Shopping Cart
+          Shopping Cart & Checkout
         </h1>
       </div>
 
@@ -535,7 +748,7 @@ export const CartPage: React.FC<CartPageProps> = ({
             <ShoppingBag className="h-5 w-5" />
           </div>
           <h2 className="font-display text-lg text-[#0B0B0B]">
-            Your cart is empty
+            Your bag is empty
           </h2>
           <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-[#0B0B0B]/65">
             Discover curated pieces across Jewelry, Watches, Eyewear, Fragrance, Royale Home, and Gift Sets.
@@ -551,44 +764,48 @@ export const CartPage: React.FC<CartPageProps> = ({
       ) : (
         <div className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-12">
           {/* Cart Items List */}
-          <div className="lg:col-span-7 divide-y divide-[#0B0B0B]/10 border-t border-b border-[#0B0B0B]/10">
+          <div className="space-y-6 lg:col-span-7">
             {items.map((item) => (
-              <div key={item.productId} className="flex gap-5 py-6">
-                <div className="h-28 w-24 shrink-0">
+              <div
+                key={item.productId}
+                className="flex flex-col sm:flex-row gap-4 border border-[#0B0B0B]/12 bg-white p-4 sm:p-5"
+              >
+                <div className="h-24 w-24 sm:h-28 sm:w-28 flex-shrink-0 bg-[#F4F1E8]">
                   <ProductMedia
                     src={item.image}
                     alt={item.name}
-                    categoryLabel={item.categoryLabel}
-                    aspectClassName="h-28 w-24"
+                    className="h-full w-full object-cover"
                   />
                 </div>
 
                 <div className="flex flex-1 flex-col justify-between">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs text-[#0B0B0B]/60">
-                        {item.categoryLabel}
-                      </p>
-                      <h3 className="mt-1 font-display text-base font-medium text-[#0B0B0B]">
-                        {item.name}
-                      </h3>
-                      <p className="mt-1 text-xs tabular-nums text-[#0B0B0B]/70">
-                        Unit Price: {formatNaira(item.price)}
-                      </p>
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] tracking-wider uppercase text-[#701F36]">
+                          {item.categoryLabel}
+                        </span>
+                        <h3 className="font-display text-base text-[#0B0B0B]">
+                          {item.name}
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveItem(item.productId)}
+                        aria-label={`Remove ${item.name}`}
+                        className="text-[#0B0B0B]/40 hover:text-[#701F36] transition-colors p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onRemoveItem(item.productId)}
-                      aria-label={`Remove ${item.name}`}
-                      className="text-[#0B0B0B]/45 hover:text-[#701F36] transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <p className="mt-1 font-mono text-xs tabular-nums text-[#0B0B0B]/70">
+                      {formatNaira(item.price)} each
+                    </p>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="inline-flex items-center border border-[#0B0B0B]/20 bg-white">
+                  <div className="mt-4 flex items-center justify-between border-t border-[#0B0B0B]/8 pt-3">
+                    <div className="flex items-center border border-[#0B0B0B]/20">
                       <button
                         type="button"
                         onClick={() =>
@@ -623,43 +840,37 @@ export const CartPage: React.FC<CartPageProps> = ({
             ))}
           </div>
 
-          {/* Order Summary & Delivery Confirmation (No invented shipping or tax amounts) */}
+          {/* Checkout & Delivery Calculation */}
           <div className="lg:col-span-5">
             <div className="border border-[#0B0B0B]/15 bg-[#F4F1E8]/60 p-6 sm:p-8">
               <h2 className="font-display text-lg tracking-wider text-[#0B0B0B]">
-                Order Summary
+                Order & Delivery Summary
               </h2>
 
-              <div className="mt-6 space-y-3 border-b border-[#0B0B0B]/12 pb-5 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-[#0B0B0B]/70">Subtotal</span>
-                  <span className="font-display text-lg font-semibold tabular-nums text-[#0B0B0B]">
-                    {formatNaira(subtotal)}
-                  </span>
-                </div>
-                <p className="text-xs leading-relaxed text-[#0B0B0B]/55">
-                  Prices are displayed in Nigerian Naira (₦). No unverified shipping fees, taxes, or payment surcharges are added.
-                </p>
-              </div>
-
               {!user ? (
-                <div className="mt-6">
+                <div className="mt-6 border border-[#0B0B0B]/15 bg-white p-5 text-center">
                   <p className="text-xs leading-relaxed text-[#0B0B0B]/75">
-                    Please sign in to your LUNA ROYALE account to save your delivery information and complete your order.
+                    Please sign in to your LUNA ROYALE account to save your delivery location and complete payment securely.
                   </p>
                   <button
                     type="button"
                     onClick={() => onNavigate('account')}
-                    className="mt-4 w-full bg-[#701F36] py-3.5 text-xs font-medium tracking-wider text-[#F8F6EF] hover:bg-[#0B0B0B] transition-colors"
+                    className="mt-4 w-full bg-[#701F36] py-3.5 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors"
                   >
                     Sign In to Checkout
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleCheckoutSubmit} className="mt-6 space-y-4">
-                  <h3 className="font-display text-sm tracking-wider text-[#0B0B0B]">
-                    Delivery Information
-                  </h3>
+                  <div className="flex items-center justify-between border-b border-[#0B0B0B]/10 pb-2">
+                    <h3 className="font-display text-xs tracking-wider uppercase text-[#0B0B0B]">
+                      Delivery Destination
+                    </h3>
+                    <span className="text-[10px] text-[#701F36] font-medium uppercase tracking-wider flex items-center gap-1">
+                      <Truck className="h-3 w-3" />
+                      Auto Rate Calculation
+                    </span>
+                  </div>
 
                   {errorMessage && (
                     <div className="border border-[#701F36]/40 bg-[#701F36]/5 p-3 text-xs text-[#701F36]">
@@ -667,46 +878,212 @@ export const CartPage: React.FC<CartPageProps> = ({
                     </div>
                   )}
 
-                  <div>
-                    <label
-                      htmlFor="checkout-recipient"
-                      className="block text-xs font-medium text-[#0B0B0B]/80"
-                    >
-                      Recipient Full Name
-                    </label>
-                    <input
-                      id="checkout-recipient"
-                      type="text"
-                      required
-                      value={recipientName}
-                      onChange={(e) => setRecipientName(e.target.value)}
-                      className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                    />
+                  {/* Recipient Details */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="checkout-recipient"
+                        className="block text-[11px] font-medium text-[#0B0B0B]/80"
+                      >
+                        Recipient Full Name
+                      </label>
+                      <input
+                        id="checkout-recipient"
+                        type="text"
+                        required
+                        value={recipientName}
+                        onChange={(e) => setRecipientName(e.target.value)}
+                        className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="checkout-phone"
+                        className="block text-[11px] font-medium text-[#0B0B0B]/80"
+                      >
+                        Phone Number
+                      </label>
+                      <input
+                        id="checkout-phone"
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="e.g. 08012345678"
+                        className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                      />
+                    </div>
                   </div>
 
+                  {/* Country Selection */}
                   <div>
                     <label
-                      htmlFor="checkout-phone"
-                      className="block text-xs font-medium text-[#0B0B0B]/80"
+                      htmlFor="checkout-country"
+                      className="block text-[11px] font-medium text-[#0B0B0B]/80"
                     >
-                      Phone Number
+                      Country
                     </label>
-                    <input
-                      id="checkout-phone"
-                      type="tel"
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                    />
+                    <select
+                      id="checkout-country"
+                      value={country}
+                      onChange={(e) => {
+                        setCountry(e.target.value);
+                        if (e.target.value === 'Nigeria') {
+                          setStateName('Lagos');
+                          setCityOrArea('Ikeja');
+                        } else {
+                          setCityOrArea(e.target.value);
+                        }
+                      }}
+                      className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none cursor-pointer"
+                    >
+                      <option value="Nigeria">Nigeria (Domestic Rates)</option>
+                      <option value="Ghana">Ghana (Quote Required)</option>
+                      <option value="Cotonou">Cotonou (Quote Required)</option>
+                      <option value="Liberia">Liberia (Quote Required)</option>
+                      <option value="Egypt">Egypt (Quote Required)</option>
+                      <option value="USA">USA (Quote Required)</option>
+                      <option value="UK">UK (Quote Required)</option>
+                      <option value="Other International">Other international destinations</option>
+                    </select>
                   </div>
 
+                  {/* Nigeria Destination Flow */}
+                  {country === 'Nigeria' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {/* State Selection */}
+                        <div>
+                          <label
+                            htmlFor="checkout-state"
+                            className="block text-[11px] font-medium text-[#0B0B0B]/80"
+                          >
+                            State / Region
+                          </label>
+                          <select
+                            id="checkout-state"
+                            value={stateName}
+                            onChange={(e) => {
+                              const nextState = e.target.value;
+                              setStateName(nextState);
+                              // Pick sensible first default for state
+                              if (nextState === 'Lagos') setCityOrArea('Ikeja');
+                              else if (nextState === 'Edo') setCityOrArea('Benin');
+                              else if (nextState === 'Delta') setCityOrArea('Asaba');
+                              else if (nextState === 'FCT Abuja') setCityOrArea('GUO Abuja Utako');
+                              else if (nextState === 'Oyo') setCityOrArea('Ibadan');
+                              else if (nextState === 'Ogun') setCityOrArea('Abeokuta');
+                              else if (nextState === 'Anambra') setCityOrArea('Awka');
+                              else if (nextState === 'Rivers') setCityOrArea('Port Harcourt');
+                              else if (nextState === 'Imo') setCityOrArea('Owerri');
+                              else if (nextState === 'Enugu') setCityOrArea('Enugu');
+                              else if (nextState === 'Abia') setCityOrArea('Aba');
+                              else if (nextState === 'Kaduna') setCityOrArea('Kaduna');
+                              else if (nextState === 'Kano') setCityOrArea('Kano');
+                              else setCityOrArea('');
+                            }}
+                            className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none cursor-pointer"
+                          >
+                            <option value="Lagos">Lagos (73 Destinations)</option>
+                            <option value="Edo">Edo (Benin, Auchi, Ekpoma)</option>
+                            <option value="Delta">Delta (Asaba, Warri, Agbor, Sapele...)</option>
+                            <option value="FCT Abuja">FCT Abuja (Utako, Gwarimpa, Kubwa...)</option>
+                            <option value="Oyo">Oyo (Ibadan, Ogbomosho, Oyo)</option>
+                            <option value="Ogun">Ogun (Abeokuta, Sagamu, Sango Otta...)</option>
+                            <option value="Anambra">Anambra (Onitsha, Awka, Nnewi...)</option>
+                            <option value="Rivers">Rivers (Port Harcourt, Choba)</option>
+                            <option value="Abia">Abia (Aba, Umuahia)</option>
+                            <option value="Imo">Imo (Owerri, Orlu, Mbaise, Anara)</option>
+                            <option value="Enugu">Enugu</option>
+                            <option value="Ebonyi">Ebonyi (Abakaliki, Afikpo)</option>
+                            <option value="Cross River">Cross River (Calabar, Ogoja)</option>
+                            <option value="Akwa Ibom">Akwa Ibom (Uyo)</option>
+                            <option value="Bayelsa">Bayelsa</option>
+                            <option value="Kwara">Kwara (Ilorin)</option>
+                            <option value="Ondo">Ondo (Akure)</option>
+                            <option value="Osun">Osun (Osogbo, Ile Ife, Ede)</option>
+                            <option value="Ekiti">Ekiti (Ado-Ekiti, Ikole, Ijero...)</option>
+                            <option value="Kogi">Kogi (Lokoja)</option>
+                            <option value="Benue">Benue (Makurdi)</option>
+                            <option value="Kaduna">Kaduna (Kaduna, Zaria)</option>
+                            <option value="Kano">Kano</option>
+                            <option value="Plateau">Plateau (Jos)</option>
+                            <option value="Bauchi">Bauchi</option>
+                            <option value="Taraba">Taraba (Jalingo)</option>
+                            <option value="Adamawa">Adamawa (Yola)</option>
+                            <option value="Nasarawa">Nasarawa (Mararaba)</option>
+                            <option value="Yobe">Yobe</option>
+                            <option value="Katsina">Katsina</option>
+                            <option value="Zamfara">Zamfara</option>
+                            <option value="Kebbi">Kebbi</option>
+                          </select>
+                        </div>
+
+                        {/* City / Town / Destination Area */}
+                        <div>
+                          <label
+                            htmlFor="checkout-city"
+                            className="block text-[11px] font-medium text-[#0B0B0B]/80"
+                          >
+                            Destination Area / Town
+                          </label>
+                          <input
+                            id="checkout-city"
+                            type="text"
+                            list="city-datalist"
+                            required
+                            value={cityOrArea}
+                            onChange={(e) => setCityOrArea(e.target.value)}
+                            placeholder="Type or pick destination"
+                            className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                          />
+                          <datalist id="city-datalist">
+                            {deliveryRates
+                              .filter((r) => r.active && r.region !== 'international')
+                              .map((r) => (
+                                <option
+                                  key={r.id}
+                                  value={r.destination}
+                                >
+                                  {r.destination} ({r.courier} — ₦{r.price?.toLocaleString()})
+                                </option>
+                              ))}
+                          </datalist>
+                        </div>
+                      </div>
+
+                      {/* Quick Lagos Location Quick-Picks when State is Lagos */}
+                      {stateName === 'Lagos' && (
+                        <div>
+                          <label className="block text-[10px] text-[#0B0B0B]/60 uppercase tracking-wider mb-1">
+                            Lagos Destination Quick-Select (All 73 official destinations)
+                          </label>
+                          <select
+                            value={cityOrArea}
+                            onChange={(e) => setCityOrArea(e.target.value)}
+                            className="w-full border border-[#0B0B0B]/20 bg-white px-2.5 py-1.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                          >
+                            <option value="">Select a Lagos area...</option>
+                            {deliveryRates
+                              .filter((r) => r.region === 'lagos' && r.active)
+                              .map((r) => (
+                                <option key={r.id} value={r.destination}>
+                                  {r.destination} — ₦{r.price?.toLocaleString()}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Street Address */}
                   <div>
                     <label
                       htmlFor="checkout-street"
-                      className="block text-xs font-medium text-[#0B0B0B]/80"
+                      className="block text-[11px] font-medium text-[#0B0B0B]/80"
                     >
-                      Street Address
+                      Full Delivery Address
                     </label>
                     <input
                       id="checkout-street"
@@ -714,83 +1091,16 @@ export const CartPage: React.FC<CartPageProps> = ({
                       required
                       value={streetAddress}
                       onChange={(e) => setStreetAddress(e.target.value)}
-                      className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                      placeholder="House number, street name, landmarks"
+                      className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                      <label
-                        htmlFor="checkout-city"
-                        className="block text-xs font-medium text-[#0B0B0B]/80"
-                      >
-                        City
-                      </label>
-                      <input
-                        id="checkout-city"
-                        type="text"
-                        required
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="checkout-state"
-                        className="block text-xs font-medium text-[#0B0B0B]/80"
-                      >
-                        State / Region
-                      </label>
-                      <input
-                        id="checkout-state"
-                        type="text"
-                        required
-                        value={stateName}
-                        onChange={(e) => setStateName(e.target.value)}
-                        className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="checkout-postal"
-                        className="block text-xs font-medium text-[#0B0B0B]/80"
-                      >
-                        Postal / ZIP (Optional)
-                      </label>
-                      <input
-                        id="checkout-postal"
-                        type="text"
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        placeholder="e.g. 100001"
-                        className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="checkout-country"
-                      className="block text-xs font-medium text-[#0B0B0B]/80"
-                    >
-                      Country (Worldwide Shipping)
-                    </label>
-                    <input
-                      id="checkout-country"
-                      type="text"
-                      required
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      placeholder="Nigeria, United Kingdom, United States, UAE, etc."
-                      className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
-                    />
-                  </div>
-
+                  {/* Delivery Notes */}
                   <div>
                     <label
                       htmlFor="checkout-notes"
-                      className="block text-xs font-medium text-[#0B0B0B]/80"
+                      className="block text-[11px] font-medium text-[#0B0B0B]/80"
                     >
                       Delivery Notes (Optional)
                     </label>
@@ -799,23 +1109,237 @@ export const CartPage: React.FC<CartPageProps> = ({
                       type="text"
                       value={deliveryNotes}
                       onChange={(e) => setDeliveryNotes(e.target.value)}
-                      className="mt-1.5 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2.5 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
+                      placeholder="Special handling instructions, apartment suite..."
+                      className="mt-1 w-full border border-[#0B0B0B]/20 bg-white px-3 py-2 text-xs text-[#0B0B0B] focus:border-[#701F36] focus:outline-none"
                     />
                   </div>
 
+                  {/* ROUTE AND PRICING FEEDBACK BOX */}
+                  <div className="pt-2">
+                    {/* 1. International Quote Message */}
+                    {isQuoteRequired && (
+                      <div className="border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-1.5">
+                        <div className="flex items-center gap-2 font-medium">
+                          <Globe className="h-4 w-4 text-amber-800" />
+                          <span>International delivery fee requires a logistics quote.</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-amber-800/90">
+                          Because no fixed international rates are set and customs duties vary by country, our concierge logistics team calculates the courier fee after assessing destination customs requirements.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 2. Unavailable Location Notice */}
+                    {isUnavailable && (
+                      <div className="border border-red-200 bg-red-50 p-4 text-xs text-red-900 space-y-1.5">
+                        <div className="flex items-center gap-2 font-medium">
+                          <AlertCircle className="h-4 w-4 text-red-700" />
+                          <span>
+                            Delivery fee currently unavailable for this location. Please contact customer support.
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-red-800/90">
+                          The entered area is outside our automatically quoted routes. Please choose a nearby hub or contact our concierge for customized arrangements.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 3. Multiple Courier Routes Available */}
+                    {!isQuoteRequired &&
+                      !isUnavailable &&
+                      lookupResult.options.length > 1 && (
+                        <div className="border border-[#701F36]/25 bg-white p-3.5 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-medium text-[#701F36] uppercase tracking-wider">
+                              Select Courier Route
+                            </span>
+                            <span className="text-[10px] text-[#0B0B0B]/60">
+                              {lookupResult.options.length} routes available
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {lookupResult.options.map((option) => (
+                              <label
+                                key={option.id}
+                                className={`flex items-center justify-between border p-2.5 cursor-pointer transition-colors ${
+                                  selectedRate?.id === option.id
+                                    ? 'border-[#701F36] bg-[#701F36]/5'
+                                    : 'border-[#0B0B0B]/12 hover:border-[#0B0B0B]/30'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="radio"
+                                    name="courier_option"
+                                    checked={selectedRate?.id === option.id}
+                                    onChange={() => setSelectedRateId(option.id)}
+                                    className="accent-[#701F36]"
+                                  />
+                                  <div>
+                                    <p className="font-medium text-xs text-[#0B0B0B]">
+                                      {option.courier}
+                                    </p>
+                                    <p className="text-[10px] text-[#0B0B0B]/60">
+                                      {option.destination}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="font-display font-semibold text-xs tabular-nums text-[#701F36]">
+                                  {formatNaira(option.price || 0)}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* 4. Single Matching Courier Route */}
+                    {!isQuoteRequired &&
+                      !isUnavailable &&
+                      lookupResult.options.length === 1 &&
+                      selectedRate && (
+                        <div className="border border-emerald-600/30 bg-emerald-500/5 p-3 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-[10px] uppercase font-medium text-emerald-800">
+                              Courier Route Identified
+                            </span>
+                            <p className="font-medium text-[#0B0B0B]">
+                              {selectedRate.courier} — {selectedRate.destination}
+                            </p>
+                          </div>
+                          <span className="font-display font-semibold text-sm tabular-nums text-emerald-900">
+                            {formatNaira(selectedRate.price || 0)}
+                          </span>
+                        </div>
+                      )}
+
+                    {/* 5. Admin-configured Pay on Arrival Option (if allowed for route) */}
+                    {selectedRate?.payOnArrivalAllowed && (
+                      <div className="mt-3 border border-amber-300 bg-amber-50/70 p-3 text-xs space-y-2">
+                        <span className="font-medium text-amber-900 block">
+                          Delivery Payment Method:
+                        </span>
+                        <div className="space-y-1.5">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="delivery_payment_method"
+                              checked={deliveryPaymentMethod === 'paystack'}
+                              onChange={() => setDeliveryPaymentMethod('paystack')}
+                              className="accent-[#701F36]"
+                            />
+                            <span>
+                              Pay products & delivery together with Paystack (Recommended)
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="delivery_payment_method"
+                              checked={deliveryPaymentMethod === 'courier_on_arrival'}
+                              onChange={() =>
+                                setDeliveryPaymentMethod('courier_on_arrival')
+                              }
+                              className="accent-[#701F36]"
+                            />
+                            <span>
+                              Pay products with Paystack now, pay delivery (
+                              {formatNaira(deliveryFee)}) directly to courier on arrival
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PRICE BREAKDOWN (Product subtotal, delivery fee, and total payable separately) */}
+                  <div className="border-t border-[#0B0B0B]/12 pt-4 space-y-2.5 text-xs">
+                    <div className="flex justify-between text-[#0B0B0B]/75">
+                      <span>Product Subtotal:</span>
+                      <span className="font-medium tabular-nums text-[#0B0B0B]">
+                        {formatNaira(subtotal)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-[#0B0B0B]/75">
+                      <span>Delivery Fee:</span>
+                      <span className="font-medium tabular-nums text-[#701F36]">
+                        {isQuoteRequired
+                          ? 'Quote required'
+                          : isUnavailable
+                            ? 'Unavailable'
+                            : formatNaira(deliveryFee)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-[#0B0B0B]/75">
+                      <span>Discount:</span>
+                      <span className="font-medium tabular-nums text-[#0B0B0B]">
+                        ₦0
+                      </span>
+                    </div>
+
+                    {isPayOnArrival && (
+                      <div className="border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Paystack Online Amount:</span>
+                          <span className="font-medium">{formatNaira(paystackAmount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Outstanding Delivery (Due on arrival):</span>
+                          <span className="font-medium">{formatNaira(deliveryFee)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between border-t border-[#0B0B0B]/12 pt-2 text-sm font-semibold text-[#0B0B0B]">
+                      <span>Total Payable:</span>
+                      <span className="font-display text-base text-[#701F36] tabular-nums">
+                        {isQuoteRequired
+                          ? 'Quote required'
+                          : formatNaira(isPayOnArrival ? paystackAmount : totalPayable)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className="w-full bg-[#701F36] py-3.5 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors disabled:opacity-50"
+                      disabled={
+                        submitting ||
+                        items.length === 0 ||
+                        isQuoteRequired ||
+                        isUnavailable ||
+                        !selectedRate
+                      }
+                      className="w-full bg-[#701F36] py-3.5 text-xs font-medium tracking-wider text-[#F8F6EF] uppercase hover:bg-[#0B0B0B] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      {submitting
-                        ? 'Submitting Order...'
-                        : 'Place Order & Request Shipping Quote'}
+                      {submitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-[#F8F6EF]" />
+                          <span>Initializing Paystack...</span>
+                        </>
+                      ) : isQuoteRequired ? (
+                        <span>Quote Required Before Payment</span>
+                      ) : isUnavailable ? (
+                        <span>Delivery Fee Unavailable</span>
+                      ) : (
+                        <>
+                          <CreditCard className="h-4 w-4" />
+                          <span>
+                            Pay {formatNaira(paystackAmount)} with Paystack
+                          </span>
+                        </>
+                      )}
                     </button>
-                    <p className="mt-2 text-center text-[11px] text-[#0B0B0B]/60">
-                      Worldwide courier shipping fee will be reviewed and confirmed by our atelier before payment is unlocked.
-                    </p>
+
+                    <div className="mt-3 flex items-center justify-center gap-2 text-[10px] text-[#0B0B0B]/60">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
+                      <span>
+                        Secure transaction powered by Paystack Live. No gateway surcharge.
+                      </span>
+                    </div>
                   </div>
                 </form>
               )}

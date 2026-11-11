@@ -243,11 +243,12 @@ async function startServer() {
               return;
             }
 
-            const expectedTotal = trustedItemsSubtotal + trustedShippingFee;
+            const isPayOnArrival = orderData.deliveryPaymentMethod === 'courier_on_arrival';
+            const expectedTotal = isPayOnArrival ? trustedItemsSubtotal : trustedItemsSubtotal + trustedShippingFee;
 
             if (Math.abs(validatedAmountNaira - expectedTotal) > 0.05) {
               res.status(400).json({
-                error: `Order total mismatch. The expected amount is ₦${expectedTotal.toLocaleString()} (Items: ₦${trustedItemsSubtotal.toLocaleString()} + Shipping: ₦${trustedShippingFee.toLocaleString()}).`,
+                error: `Order total mismatch. The expected amount is ₦${expectedTotal.toLocaleString()} (Items: ₦${trustedItemsSubtotal.toLocaleString()}${isPayOnArrival ? ' - Delivery paid on arrival' : ` + Shipping: ₦${trustedShippingFee.toLocaleString()}`}).`,
               });
               return;
             }
@@ -269,7 +270,11 @@ async function startServer() {
           calculatedSum += itemPrice * itemQuantity;
         }
       }
-      if (calculatedSum > 0 && Math.abs(calculatedSum - validatedAmountNaira) > 0.05) {
+      const rawDeliveryFee = typeof req.body.deliveryFee === 'number' ? req.body.deliveryFee : Number(req.body.deliveryFee || 0);
+      const deliveryFee = Number.isFinite(rawDeliveryFee) && rawDeliveryFee >= 0 ? rawDeliveryFee : 0;
+      const expectedTotal = calculatedSum + (req.body.deliveryPaymentMethod === 'courier_on_arrival' ? 0 : deliveryFee);
+
+      if (calculatedSum > 0 && Math.abs(expectedTotal - validatedAmountNaira) > 0.05) {
         res.status(400).json({
           error: 'Order total mismatch. The amount provided does not match item total calculations.',
         });

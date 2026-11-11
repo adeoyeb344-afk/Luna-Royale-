@@ -205,6 +205,9 @@ export interface DeliveryInfo {
   state: string;
   postalCode?: string;
   country: string;
+  destinationArea?: string;
+  courierName?: string;
+  deliveryPaymentMethod?: 'paystack' | 'courier_on_arrival';
   deliveryNotes?: string;
 }
 
@@ -256,6 +259,9 @@ export interface Order {
   shippingStatus: ShippingFeeStatus;
   shippingConfirmedAt?: string;
   shippingNotes?: string;
+  selectedDestination?: string;
+  selectedCourier?: string;
+  deliveryPaymentMethod?: 'paystack' | 'courier_on_arrival';
   totalAmount: number;
   currency: 'NGN';
   status: OrderStatus;

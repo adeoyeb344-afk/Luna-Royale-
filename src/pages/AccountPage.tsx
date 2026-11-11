@@ -1620,10 +1620,18 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                                     <p className="font-medium text-sm tabular-nums text-[#0B0B0B]">{formatNaira(order.subtotal)}</p>
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-[#0B0B0B]/60 uppercase">Confirmed Shipping</span>
+                                    <span className="text-[10px] text-[#0B0B0B]/60 uppercase">
+                                      {order.selectedCourier ? `Delivery (${order.selectedCourier})` : 'Confirmed Shipping'}
+                                    </span>
                                     <p className="font-medium text-sm tabular-nums text-[#701F36]">
                                       {formatNaira(order.shippingFee || 0)}
                                     </p>
+                                    {order.deliveryPaymentMethod === 'courier_on_arrival' && (
+                                      <p className="text-[10px] text-amber-800 font-medium">Payable on arrival</p>
+                                    )}
+                                    {order.selectedDestination && (
+                                      <p className="text-[10px] text-[#0B0B0B]/60 truncate">Destination: {order.selectedDestination}</p>
+                                    )}
                                     {order.shippingNotes && (
                                       <p className="text-[10px] text-[#0B0B0B]/60 truncate">{order.shippingNotes}</p>
                                     )}
