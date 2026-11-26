@@ -8,8 +8,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const serverDir = import.meta.dirname || path.dirname(fileURLToPath(import.meta.url));
 
 async function startServer() {
   const app = express();
@@ -945,7 +944,7 @@ Select the most suitable products from the catalog above and provide personalize
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(__dirname, 'dist');
+    const distPath = path.join(serverDir, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
