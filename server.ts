@@ -4,7 +4,6 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
@@ -934,7 +933,12 @@ Select the most suitable products from the catalog above and provide personalize
     });
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  // On Netlify, static assets are served by the CDN and this server only
+  // handles /api/* routes (see netlify/server/index.ts).
+  if (process.env.NETLIFY_SERVER_RUNTIME === '1') {
+    // no static/Vite middleware needed
+  } else if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
